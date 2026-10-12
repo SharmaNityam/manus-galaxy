@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/chat_message.dart';
+import '../../domain/entities/conversation_summary.dart';
 import '../../domain/repositories/chat_repository.dart';
+import '../../domain/usecases/manage_conversation_history.dart';
 import '../../domain/usecases/load_conversation_messages.dart';
 import '../../domain/usecases/save_conversation_messages.dart';
 import '../../domain/usecases/stream_chat_reply.dart';
@@ -26,6 +28,16 @@ final saveConversationMessagesProvider = Provider<SaveConversationMessages>((
   ref,
 ) {
   return SaveConversationMessages(ref.watch(chatRepositoryProvider));
+});
+
+final manageConversationHistoryProvider = Provider<ManageConversationHistory>(
+  (ref) => ManageConversationHistory(ref.watch(chatRepositoryProvider)),
+);
+
+final conversationHistoryProvider = FutureProvider<List<ConversationSummary>>((
+  ref,
+) {
+  return ref.watch(manageConversationHistoryProvider).load();
 });
 
 final chatControllerProvider = NotifierProvider<ChatController, ChatState>(
@@ -136,8 +148,9 @@ class ChatController extends Notifier<ChatState> {
   }
 
   Future<void> _save(String conversationId, List<ChatMessage> messages) {
-    return ref
+    final save = ref
         .read(saveConversationMessagesProvider)
         .call(conversationId, messages);
+    return save.whenComplete(() => ref.invalidate(conversationHistoryProvider));
   }
 }

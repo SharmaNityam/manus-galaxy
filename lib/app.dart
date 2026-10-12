@@ -11,7 +11,7 @@ class ManusTrialApp extends StatelessWidget {
     return MaterialApp.router(
       title: 'Manus Chat',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
+      theme: AppTheme.light,
       routerConfig: appRouter,
     );
   }

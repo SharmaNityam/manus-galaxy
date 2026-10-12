@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/responsive_content.dart';
 
 class ChatComposer extends StatefulWidget {
   const ChatComposer({
@@ -28,7 +29,7 @@ class _ChatComposerState extends State<ChatComposer> {
   }
 
   void _submit() {
-    final text = _controller.text;
+    final text = _controller.text.trim();
     if (text.trim().isEmpty) return;
     widget.onSend(text);
     _controller.clear();
@@ -36,52 +37,74 @@ class _ChatComposerState extends State<ChatComposer> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(30),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _controller,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText: 'Ask anything',
-                border: InputBorder.none,
-                isDense: true,
-              ),
+    return ResponsiveContent(
+      maxWidth: 800,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.fromLTRB(18, 14, 12, 10),
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(30),
             ),
-            const SizedBox(height: 8),
-            Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(Icons.add),
-                  tooltip: 'Add attachment',
-                ),
-                const Spacer(),
-                IconButton.filled(
-                  onPressed: widget.isStreaming ? widget.onStop : _submit,
-                  tooltip: widget.isStreaming
-                      ? 'Stop response'
-                      : 'Send message',
-                  icon: Icon(
-                    widget.isStreaming
-                        ? Icons.stop_rounded
-                        : Icons.arrow_upward,
+                TextField(
+                  controller: _controller,
+                  minLines: 1,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.newline,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontSize: 18, height: 1.35),
+                  cursorColor: AppTheme.accent,
+                  decoration: const InputDecoration(
+                    hintText: 'Assign a task or ask anything',
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {},
+                      tooltip: 'Add attachment',
+                      icon: const Icon(Icons.add_rounded, size: 30),
+                      color: AppTheme.secondaryText,
+                    ),
+                    const Spacer(),
+                    IconButton.filled(
+                      onPressed: widget.isStreaming ? widget.onStop : _submit,
+                      tooltip: widget.isStreaming
+                          ? 'Stop response'
+                          : 'Send message',
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(52, 52),
+                        maximumSize: const Size(52, 52),
+                        shape: const CircleBorder(),
+                      ),
+                      icon: Icon(
+                        widget.isStreaming
+                            ? Icons.stop_rounded
+                            : Icons.arrow_upward_rounded,
+                        size: 27,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
