@@ -7,6 +7,7 @@ import '../../domain/entities/chat_message.dart';
 import '../providers/chat_providers.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/conversation_history_drawer.dart';
+import '../widgets/markdown_response.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({required this.conversationId, super.key});
@@ -108,7 +109,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     itemBuilder: (context, index) => ResponsiveContent(
                       maxWidth: 800,
                       horizontalPadding: 16,
-                      child: _MessageBubble(message: state.messages[index]),
+                      child: _MessageBubble(
+                        message: state.messages[index],
+                        onRetry: () => ref
+                            .read(chatControllerProvider.notifier)
+                            .retryMessage(state.messages[index].id),
+                      ),
                     ),
                   ),
                 ),
@@ -149,6 +155,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ],
             ),
           ),
+          if (state.persistenceError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                state.persistenceError!,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFFB3261E)),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ChatComposer(
             isStreaming: state.isStreaming,
             onStop: ref.read(chatControllerProvider.notifier).stop,
@@ -161,9 +178,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, required this.onRetry});
 
   final ChatMessage message;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -177,18 +195,32 @@ class _MessageBubble extends StatelessWidget {
         final content = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              message.content.isEmpty &&
-                      message.status == MessageStatus.streaming
-                  ? '…'
-                  : message.content,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
+            if (isUser)
+              Text(
+                message.content,
+                style: Theme.of(context).textTheme.bodyLarge,
+              )
+            else if (message.content.isNotEmpty)
+              MarkdownResponse(data: message.content)
+            else if (message.status == MessageStatus.streaming)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             if (message.status == MessageStatus.stopped)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   'Stopped',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            if (message.status == MessageStatus.queued)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  isUser ? 'Waiting for connection' : 'Queued to send',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -198,9 +230,18 @@ class _MessageBubble extends StatelessWidget {
                 child: Text(
                   'Response failed',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: const Color(0xFFFF9B9B),
+                    color: const Color(0xFFB3261E),
                   ),
                 ),
+              ),
+            if (!isUser &&
+                (message.status == MessageStatus.failed ||
+                    message.status == MessageStatus.stopped))
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Try again'),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 44)),
               ),
           ],
         );

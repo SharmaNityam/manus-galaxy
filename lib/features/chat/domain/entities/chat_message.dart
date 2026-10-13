@@ -1,6 +1,6 @@
 enum ChatRole { user, assistant }
 
-enum MessageStatus { streaming, complete, stopped, failed }
+enum MessageStatus { streaming, queued, complete, stopped, failed }
 
 class ChatMessage {
   const ChatMessage({
@@ -9,6 +9,7 @@ class ChatMessage {
     required this.content,
     required this.createdAt,
     required this.status,
+    this.operationId,
   });
 
   final String id;
@@ -16,14 +17,20 @@ class ChatMessage {
   final String content;
   final DateTime createdAt;
   final MessageStatus status;
+  final String? operationId;
 
-  ChatMessage copyWith({String? content, MessageStatus? status}) {
+  ChatMessage copyWith({
+    String? content,
+    MessageStatus? status,
+    String? operationId,
+  }) {
     return ChatMessage(
       id: id,
       role: role,
       content: content ?? this.content,
       createdAt: createdAt,
       status: status ?? this.status,
+      operationId: operationId ?? this.operationId,
     );
   }
 
@@ -33,6 +40,7 @@ class ChatMessage {
     'content': content,
     'createdAt': createdAt.toIso8601String(),
     'status': status.name,
+    if (operationId != null) 'operationId': operationId,
   };
 
   factory ChatMessage.fromMap(Map<dynamic, dynamic> map) {
@@ -42,6 +50,7 @@ class ChatMessage {
       content: map['content'] as String,
       createdAt: DateTime.parse(map['createdAt'] as String),
       status: MessageStatus.values.byName(map['status'] as String),
+      operationId: map['operationId'] as String?,
     );
   }
 }

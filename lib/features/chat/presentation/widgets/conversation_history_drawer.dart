@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../domain/entities/conversation_summary.dart';
+import '../controllers/outbox_sync_coordinator.dart';
 import '../providers/chat_providers.dart';
 
 class ConversationHistoryDrawer extends ConsumerWidget {
@@ -15,6 +16,7 @@ class ConversationHistoryDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.sizeOf(context).width;
     final history = ref.watch(conversationHistoryProvider);
+    final sync = ref.watch(outboxSyncCoordinatorProvider);
 
     return Drawer(
       width: width < 420 ? width * 0.88 : 360,
@@ -65,6 +67,30 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                 ),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+              child: Row(
+                children: [
+                  Icon(
+                    _syncIcon(sync.status),
+                    size: 17,
+                    color: AppTheme.secondaryText,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _syncLabel(sync),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  if (sync.status == SyncStatus.failed)
+                    TextButton(
+                      onPressed: sync.retry,
+                      child: const Text('Retry'),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(height: 18),
             Expanded(
               child: history.when(
@@ -102,6 +128,28 @@ class ConversationHistoryDrawer extends ConsumerWidget {
       ),
     );
   }
+
+  IconData _syncIcon(SyncStatus status) => switch (status) {
+    SyncStatus.checking => Icons.sync_rounded,
+    SyncStatus.offline => Icons.cloud_off_outlined,
+    SyncStatus.online => Icons.cloud_done_outlined,
+    SyncStatus.syncing => Icons.sync_rounded,
+    SyncStatus.failed => Icons.cloud_off_outlined,
+  };
+
+  String _syncLabel(OutboxSyncCoordinator sync) => switch (sync.status) {
+    SyncStatus.checking => 'Checking connection',
+    SyncStatus.offline =>
+      sync.pendingCount == 0
+          ? 'Offline'
+          : '${sync.pendingCount} changes waiting to sync',
+    SyncStatus.online =>
+      sync.pendingCount == 0
+          ? 'Up to date'
+          : '${sync.pendingCount} changes waiting to sync',
+    SyncStatus.syncing => 'Syncing changes',
+    SyncStatus.failed => sync.errorMessage ?? 'Sync failed',
+  };
 }
 
 class _ConversationList extends ConsumerWidget {
@@ -305,6 +353,7 @@ class _ConversationTile extends ConsumerWidget {
           }
         }
     }
+    await ref.read(outboxSyncCoordinatorProvider).refresh();
     ref.invalidate(conversationHistoryProvider);
   }
 }
