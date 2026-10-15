@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../../core/logging/app_logger.dart';
 import '../../data/datasources/network_status_source.dart';
 import '../../domain/entities/pending_operation.dart';
 import '../../domain/repositories/chat_repository.dart';
@@ -29,8 +30,20 @@ class OutboxSyncCoordinator extends ChangeNotifier {
       status == SyncStatus.online || status == SyncStatus.syncing;
 
   Future<void> start() async {
-    _subscription = _networkStatus.changes.listen(_onConnectivityChanged);
-    await _onConnectivityChanged(await _networkStatus.isOnline());
+    try {
+      _subscription = _networkStatus.changes.listen(_onConnectivityChanged);
+      await _onConnectivityChanged(await _networkStatus.isOnline());
+    } catch (error, stackTrace) {
+      logFailure(
+        'connectivity_check_failed',
+        error,
+        stackTrace,
+        scope: 'chat.sync',
+      );
+      status = SyncStatus.failed;
+      errorMessage = 'Could not check connection. Tap to retry.';
+      notifyListeners();
+    }
   }
 
   Future<void> refresh() async {
@@ -79,7 +92,8 @@ class OutboxSyncCoordinator extends ChangeNotifier {
       pendingCount = await _repository.pendingOperationCount();
       status = SyncStatus.online;
       errorMessage = null;
-    } catch (error) {
+    } catch (error, stackTrace) {
+      logFailure('outbox_replay_failed', error, stackTrace, scope: 'chat.sync');
       pendingCount = await _repository.pendingOperationCount();
       status = SyncStatus.failed;
       errorMessage = 'Some changes could not sync. Try again.';

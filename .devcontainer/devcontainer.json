@@ -1,0 +1,18 @@
+{
+  "name": "Manus Galaxy Flutter",
+  "image": "ghcr.io/cirruslabs/flutter:3.41.9",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "Manus Galaxy phone preview",
+      "onAutoForward": "openBrowser",
+      "visibility": "private"
+    }
+  },
+  "postCreateCommand": "flutter pub get",
+  "customizations": {
+    "vscode": {
+      "extensions": ["Dart-Code.flutter"]
+    }
+  }
+}

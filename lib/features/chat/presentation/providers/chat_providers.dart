@@ -1,7 +1,10 @@
+import '../../domain/entities/chat_service_failure.dart';
+import '../../domain/entities/chat_attachment.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/logging/app_logger.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/conversation_summary.dart';
 import '../../domain/entities/pending_operation.dart';
@@ -82,6 +85,7 @@ class ChatState {
 class ChatController extends Notifier<ChatState> {
   StreamSubscription<String>? _subscription;
   StreamSubscription<PendingOperation>? _syncSubscription;
+  OutboxSyncCoordinator? _observedSyncCoordinator;
   Timer? _flushTimer;
   String _pendingDelta = '';
   int _requestGeneration = 0;
@@ -89,17 +93,30 @@ class ChatController extends Notifier<ChatState> {
 
   @override
   ChatState build() {
+    final syncCoordinator = ref.read(outboxSyncCoordinatorProvider);
+    _observedSyncCoordinator = syncCoordinator;
+    syncCoordinator.addListener(_handleConnectivityStatusChanged);
     ref.onDispose(() {
       _requestGeneration++;
       _flushTimer?.cancel();
       _subscription?.cancel();
       _syncSubscription?.cancel();
+      _observedSyncCoordinator?.removeListener(
+        _handleConnectivityStatusChanged,
+      );
     });
     _syncSubscription = ref
         .read(outboxSyncCoordinatorProvider)
         .appliedOperations
         .listen(_handleAppliedOperation);
     return const ChatState();
+  }
+
+  void _handleConnectivityStatusChanged() {
+    if (state.isStreaming &&
+        !ref.read(outboxSyncCoordinatorProvider).isOnline) {
+      unawaited(stop());
+    }
   }
 
   String newConversation() {
@@ -110,6 +127,7 @@ class ChatController extends Notifier<ChatState> {
   }
 
   Future<void> openConversation(String conversationId) async {
+    final hydration = Stopwatch()..start();
     _interruptCurrentRequest();
     final generation = ++_requestGeneration;
     _flushTimer?.cancel();
@@ -120,15 +138,41 @@ class ChatController extends Notifier<ChatState> {
     if (generation != _requestGeneration) return;
     final recovered = await _recoverQueuedMessages(conversationId, messages);
     state = ChatState(conversationId: conversationId, messages: recovered);
+    hydration.stop();
+    logMetric('conversation_hydrated', {
+      'message_count': recovered.length,
+      'elapsed_us': hydration.elapsedMicroseconds,
+    }, scope: 'performance.local_hydration');
   }
 
-  Future<void> send(String prompt) async {
+  Future<void> send(
+    String prompt, {
+    String? contextInstruction,
+    List<ChatAttachment> attachments = const [],
+  }) async {
     final text = prompt.trim();
-    if (text.isEmpty || state.isStreaming) return;
+    if ((text.isEmpty && attachments.isEmpty) || state.isStreaming) return;
     final conversationId = state.conversationId ?? newConversation();
     final syncCoordinator = ref.read(outboxSyncCoordinatorProvider);
     if (!syncCoordinator.isOnline) {
-      await _queueOfflinePrompt(conversationId, text);
+      try {
+        await _queueOfflinePrompt(
+          conversationId,
+          text,
+          contextInstruction,
+          attachments,
+        );
+      } catch (error, stackTrace) {
+        logFailure(
+          'offline_send_queue_failed',
+          error,
+          stackTrace,
+          scope: 'chat.queue',
+        );
+        state = state.copyWith(
+          persistenceError: 'This message could not be queued. Try again.',
+        );
+      }
       return;
     }
     final userMessage = ChatMessage(
@@ -137,6 +181,8 @@ class ChatController extends Notifier<ChatState> {
       content: text,
       createdAt: DateTime.now(),
       status: MessageStatus.complete,
+      contextInstruction: contextInstruction,
+      attachments: attachments,
     );
     final assistantMessage = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -148,7 +194,12 @@ class ChatController extends Notifier<ChatState> {
     final messages = [...state.messages, userMessage, assistantMessage];
     state = state.copyWith(messages: messages, isStreaming: true);
     _persist(conversationId, messages);
-    _startStream(text, conversationId, assistantMessage.id);
+    _startStream(
+      text,
+      conversationId,
+      assistantMessage.id,
+      contextInstruction: contextInstruction,
+    );
   }
 
   Future<void> stop() async {
@@ -202,7 +253,12 @@ class ChatController extends Notifier<ChatState> {
     final conversationId = state.conversationId;
     if (conversationId == null) return;
     _persist(conversationId, messages);
-    _startStream(user.content, conversationId, assistant.id);
+    _startStream(
+      user.content,
+      conversationId,
+      assistant.id,
+      contextInstruction: user.contextInstruction,
+    );
   }
 
   ChatMessage? get _lastAssistant {
@@ -212,7 +268,12 @@ class ChatController extends Notifier<ChatState> {
     return null;
   }
 
-  Future<void> _queueOfflinePrompt(String conversationId, String prompt) async {
+  Future<void> _queueOfflinePrompt(
+    String conversationId,
+    String prompt,
+    String? contextInstruction,
+    List<ChatAttachment> attachments,
+  ) async {
     final operationId = PendingOperation.createId();
     final now = DateTime.now();
     final userMessage = ChatMessage(
@@ -222,6 +283,8 @@ class ChatController extends Notifier<ChatState> {
       createdAt: now,
       status: MessageStatus.queued,
       operationId: operationId,
+      contextInstruction: contextInstruction,
+      attachments: attachments,
     );
     final assistantMessage = ChatMessage(
       id: PendingOperation.createId(),
@@ -240,7 +303,10 @@ class ChatController extends Notifier<ChatState> {
             id: operationId,
             conversationId: conversationId,
             type: ChatOperationType.send,
-            payload: {'prompt': prompt},
+            payload: {
+              'prompt': prompt,
+              'contextInstruction': contextInstruction,
+            },
             createdAt: now,
           ),
         );
@@ -323,17 +389,49 @@ class ChatController extends Notifier<ChatState> {
       operation.payload['prompt'] as String,
       operation.conversationId,
       assistant.id,
+      contextInstruction: operation.payload['contextInstruction'] as String?,
     );
   }
 
-  void _startStream(String prompt, String conversationId, String messageId) {
+  void _startStream(
+    String prompt,
+    String conversationId,
+    String messageId, {
+    String? contextInstruction,
+  }) {
     final generation = ++_requestGeneration;
     _pendingDelta = '';
     _flushTimer?.cancel();
+    final assistantIndex = state.messages.indexWhere(
+      (message) => message.id == messageId,
+    );
+    final userIndex = state.messages
+        .take(assistantIndex)
+        .toList()
+        .lastIndexWhere((message) => message.role == ChatRole.user);
+    final user = userIndex < 0 ? null : state.messages[userIndex];
+    final previous = state.messages
+        .take(userIndex < 0 ? 0 : userIndex)
+        .where(
+          (message) =>
+              message.content.isNotEmpty &&
+              (message.status == MessageStatus.complete ||
+                  message.status == MessageStatus.stopped),
+        )
+        .toList();
+    final history = previous
+        .skip((previous.length - 12).clamp(0, previous.length))
+        .toList();
     try {
       _subscription = ref
           .read(streamChatReplyProvider)
-          .call(prompt)
+          .call(
+            contextInstruction == null
+                ? prompt
+                : '$contextInstruction\n\nUser request: $prompt',
+            attachments: user?.attachments ?? const [],
+            history: history,
+          )
           .listen(
             (chunk) {
               if (generation != _requestGeneration) return;
@@ -345,8 +443,20 @@ class ChatController extends Notifier<ChatState> {
             },
             onError: (Object error, StackTrace stackTrace) {
               if (generation != _requestGeneration) return;
+              logFailure(
+                'stream_failed',
+                error,
+                stackTrace,
+                scope: 'chat.stream',
+              );
               _flushPending(generation, conversationId, messageId);
-              _finishAssistant(messageId, MessageStatus.failed);
+              _finishAssistant(
+                messageId,
+                MessageStatus.failed,
+                failureMessage: error is ChatServiceFailure
+                    ? error.message
+                    : null,
+              );
             },
             onDone: () {
               if (generation != _requestGeneration) return;
@@ -355,9 +465,19 @@ class ChatController extends Notifier<ChatState> {
             },
             cancelOnError: true,
           );
-    } catch (_) {
+    } catch (error, stackTrace) {
       if (generation == _requestGeneration) {
-        _finishAssistant(messageId, MessageStatus.failed);
+        logFailure(
+          'stream_start_failed',
+          error,
+          stackTrace,
+          scope: 'chat.stream',
+        );
+        _finishAssistant(
+          messageId,
+          MessageStatus.failed,
+          failureMessage: error is ChatServiceFailure ? error.message : null,
+        );
       }
     }
   }
@@ -388,13 +508,20 @@ class ChatController extends Notifier<ChatState> {
     if (activeConversation != null) _persist(activeConversation, messages);
   }
 
-  void _finishAssistant(String messageId, MessageStatus status) {
+  void _finishAssistant(
+    String messageId,
+    MessageStatus status, {
+    String? failureMessage,
+  }) {
     final index = state.messages.indexWhere(
       (message) => message.id == messageId,
     );
     if (index < 0) return;
     final messages = [...state.messages];
-    messages[index] = messages[index].copyWith(status: status);
+    messages[index] = messages[index].copyWith(
+      status: status,
+      failureMessage: failureMessage,
+    );
     state = state.copyWith(messages: messages, isStreaming: false);
     final conversationId = state.conversationId;
     if (conversationId != null) _persist(conversationId, messages);
@@ -410,6 +537,12 @@ class ChatController extends Notifier<ChatState> {
           ref.invalidate(conversationHistoryProvider);
         })
         .catchError((Object error, StackTrace stackTrace) {
+          logFailure(
+            'message_persistence_failed',
+            error,
+            stackTrace,
+            scope: 'chat.persistence',
+          );
           if (state.conversationId == conversationId) {
             state = state.copyWith(
               persistenceError: 'Could not save this chat.',

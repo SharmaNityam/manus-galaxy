@@ -1,4 +1,4 @@
-package com.example.manus_trial_app
+package com.galaxyai.manusgalaxy
 
 import io.flutter.embedding.android.FlutterActivity
 

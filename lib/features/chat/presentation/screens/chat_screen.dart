@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/responsive_content.dart';
 import '../../domain/entities/chat_message.dart';
 import '../providers/chat_providers.dart';
+import '../../../composer/presentation/attachment_chip.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/conversation_history_drawer.dart';
 import '../widgets/markdown_response.dart';
@@ -18,13 +22,15 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with WidgetsBindingObserver {
   final _scrollController = ScrollController();
   bool _isAtBottom = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final activeId = ref.read(chatControllerProvider).conversationId;
       if (activeId != widget.conversationId) {
@@ -36,7 +42,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused &&
+        ref.read(chatControllerProvider).isStreaming) {
+      unawaited(ref.read(chatControllerProvider.notifier).stop());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }
@@ -169,7 +184,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ChatComposer(
             isStreaming: state.isStreaming,
             onStop: ref.read(chatControllerProvider.notifier).stop,
-            onSend: ref.read(chatControllerProvider.notifier).send,
+            onSend: (draft) => ref
+                .read(chatControllerProvider.notifier)
+                .send(draft.text, attachments: draft.attachments),
           ),
         ],
       ),
@@ -195,14 +212,77 @@ class _MessageBubble extends StatelessWidget {
         final content = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (message.attachments.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: message.attachments
+                      .map((file) => AttachmentChip(attachment: file))
+                      .toList(),
+                ),
+              ),
             if (isUser)
               Text(
                 message.content,
                 style: Theme.of(context).textTheme.bodyLarge,
               )
-            else if (message.content.isNotEmpty)
-              MarkdownResponse(data: message.content)
-            else if (message.status == MessageStatus.streaming)
+            else if (message.content.isNotEmpty) ...[
+              Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Galaxy AI',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              MarkdownResponse(data: message.content),
+              if (message.status == MessageStatus.complete)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 18,
+                        color: Colors.green.shade600,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Task completed',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Copy response',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: message.content),
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Response copied'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 20),
+                      ),
+                    ],
+                  ),
+                ),
+            ] else if (message.status == MessageStatus.streaming)
               const SizedBox(
                 width: 20,
                 height: 20,
@@ -228,7 +308,8 @@ class _MessageBubble extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Response failed',
+                  message.failureMessage ??
+                      'Could not get a response. Check the connection or model setup, then try again.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: const Color(0xFFB3261E),
                   ),

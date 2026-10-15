@@ -7,13 +7,29 @@ import '../../domain/entities/conversation_summary.dart';
 import '../controllers/outbox_sync_coordinator.dart';
 import '../providers/chat_providers.dart';
 
-class ConversationHistoryDrawer extends ConsumerWidget {
+class ConversationHistoryDrawer extends ConsumerStatefulWidget {
   const ConversationHistoryDrawer({this.activeConversationId, super.key});
 
   final String? activeConversationId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ConversationHistoryDrawer> createState() =>
+      _ConversationHistoryDrawerState();
+}
+
+class _ConversationHistoryDrawerState
+    extends ConsumerState<ConversationHistoryDrawer> {
+  final _searchController = TextEditingController();
+  var _showArchived = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final history = ref.watch(conversationHistoryProvider);
     final sync = ref.watch(outboxSyncCoordinatorProvider);
@@ -91,7 +107,48 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Search chats',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _searchController.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {});
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                  filled: true,
+                  fillColor: const Color(0xFFECECE9),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Chats')),
+                  ButtonSegment(value: true, label: Text('Archived')),
+                ],
+                selected: {_showArchived},
+                onSelectionChanged: (selection) =>
+                    setState(() => _showArchived = selection.first),
+                showSelectedIcon: false,
+              ),
+            ),
+            const SizedBox(height: 10),
             Expanded(
               child: history.when(
                 loading: () => const Center(
@@ -104,12 +161,17 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                   ),
                 ),
                 data: (conversations) {
-                  if (conversations.isEmpty) {
+                  final query = _searchController.text.trim().toLowerCase();
+                  final filtered = conversations
+                      .where((item) => item.isArchived == _showArchived)
+                      .where((item) => item.title.toLowerCase().contains(query))
+                      .toList();
+                  if (filtered.isEmpty) {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(28),
                         child: Text(
-                          'Your conversations will appear here.',
+                          'No matching conversations.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: AppTheme.secondaryText),
                         ),
@@ -117,8 +179,8 @@ class ConversationHistoryDrawer extends ConsumerWidget {
                     );
                   }
                   return _ConversationList(
-                    conversations: conversations,
-                    activeConversationId: activeConversationId,
+                    conversations: filtered,
+                    activeConversationId: widget.activeConversationId,
                   );
                 },
               ),
@@ -212,7 +274,7 @@ class _ConversationList extends ConsumerWidget {
   }
 }
 
-enum _HistoryAction { rename, pin, delete }
+enum _HistoryAction { rename, pin, archive, delete }
 
 class _ConversationTile extends ConsumerWidget {
   const _ConversationTile({required this.conversation, required this.selected});
@@ -272,6 +334,20 @@ class _ConversationTile extends ConsumerWidget {
                   title: Text(conversation.isPinned ? 'Unpin' : 'Pin'),
                 ),
               ),
+              PopupMenuItem(
+                value: _HistoryAction.archive,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(
+                    conversation.isArchived
+                        ? Icons.unarchive_outlined
+                        : Icons.archive_outlined,
+                  ),
+                  title: Text(
+                    conversation.isArchived ? 'Unarchive' : 'Archive',
+                  ),
+                ),
+              ),
               const PopupMenuItem(
                 value: _HistoryAction.delete,
                 child: ListTile(
@@ -325,6 +401,8 @@ class _ConversationTile extends ConsumerWidget {
         }
       case _HistoryAction.pin:
         await history.setPinned(conversation.id, !conversation.isPinned);
+      case _HistoryAction.archive:
+        await history.setArchived(conversation.id, !conversation.isArchived);
       case _HistoryAction.delete:
         final confirmed = await showDialog<bool>(
           context: context,

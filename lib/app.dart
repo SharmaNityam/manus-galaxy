@@ -9,7 +9,7 @@ class ManusTrialApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Manus Chat',
+      title: 'Manus Galaxy',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       routerConfig: appRouter,

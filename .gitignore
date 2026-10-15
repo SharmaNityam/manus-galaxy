@@ -44,5 +44,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /android/local.properties
+/android/key.properties
+*.jks
+*.keystore
+/handoff/*.apk
+/handoff/*.ipa
+/handoff/*.mp4
+/handoff/*.zip
+.local-secrets.json
 /ios/Flutter/Generated.xcconfig
 /ios/Flutter/flutter_export_environment.sh

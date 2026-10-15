@@ -1,3 +1,4 @@
+import 'package:manus_trial_app/features/chat/domain/entities/chat_attachment.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +57,45 @@ void main() {
     expect(repository.saved.last.$1, conversationId);
     expect(repository.saved.last.$2.last.content, 'partial');
   });
+
+  test(
+    'connectivity loss stops the stream and preserves partial text',
+    () async {
+      controller.newConversation();
+      await controller.send('keep my partial answer');
+      repository.streams.single.add('partial answer');
+      await Future<void>.delayed(const Duration(milliseconds: 90));
+
+      network.setOnline(false);
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.state.isStreaming, isFalse);
+      expect(controller.state.messages.last.content, 'partial answer');
+      expect(controller.state.messages.last.status, MessageStatus.stopped);
+      expect(repository.cancelled.single, isTrue);
+    },
+  );
+
+  test(
+    'mode instructions reach the model but stay out of the user bubble',
+    () async {
+      controller.newConversation();
+      await controller.send(
+        'Explain offline recovery',
+        contextInstruction: 'Answer concisely and use practical steps.',
+      );
+
+      expect(
+        repository.prompts.single,
+        'Answer concisely and use practical steps.\n\nUser request: Explain offline recovery',
+      );
+      expect(
+        controller.state.messages.first.content,
+        'Explain offline recovery',
+      );
+    },
+  );
 
   test(
     'retry resends the preceding user prompt after a stream failure',
@@ -135,19 +175,66 @@ void main() {
       expect(repository.operations, isEmpty);
     },
   );
+  test(
+    'follow-up receives preceding turns, while a new chat starts without them',
+    () async {
+      controller.newConversation();
+      await controller.send('My budget is 5000.');
+      repository.streams.first.add('I will use that budget.');
+      await repository.streams.first.close();
+      await Future<void>.delayed(const Duration(milliseconds: 90));
+      await controller.send('What was my budget?');
+      expect(repository.histories.last.map((message) => message.content), [
+        'My budget is 5000.',
+        'I will use that budget.',
+      ]);
+      controller.newConversation();
+      await controller.send('A separate task');
+      expect(repository.histories.last, isEmpty);
+    },
+  );
+
+  test('queued attachments survive replay and an explicit retry', () async {
+    const attachment = ChatAttachment(
+      id: 'file',
+      name: 'photo.png',
+      mimeType: 'image/png',
+      base64Data: 'AQID',
+      size: 3,
+    );
+    network.setOnline(false);
+    await Future<void>.delayed(Duration.zero);
+    controller.newConversation();
+    await controller.send('Review this', attachments: [attachment]);
+    expect(controller.state.messages.first.attachments.single.id, 'file');
+    network.setOnline(true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(repository.attachments.last.single.base64Data, 'AQID');
+    await controller.stop();
+    await controller.retryLast();
+    expect(repository.attachments.last.single.base64Data, 'AQID');
+  });
 }
 
 class _FakeChatRepository implements ChatRepository {
   final streams = <StreamController<String>>[];
   final prompts = <String>[];
+  final histories = <List<ChatMessage>>[];
+  final attachments = <List<ChatAttachment>>[];
   final saved = <(String, List<ChatMessage>)>[];
   final cancelled = <bool>[];
   final operations = <PendingOperation>[];
   final messagesByConversation = <String, List<ChatMessage>>{};
 
   @override
-  Stream<String> streamReply(String prompt) {
+  Stream<String> streamReply(
+    String prompt, {
+    List<ChatAttachment> attachments = const [],
+    List<ChatMessage> history = const [],
+  }) {
     prompts.add(prompt);
+    histories.add(history);
+    this.attachments.add(attachments);
     late final StreamController<String> stream;
     stream = StreamController<String>(
       onCancel: () {
@@ -181,6 +268,12 @@ class _FakeChatRepository implements ChatRepository {
   Future<void> setConversationPinned(
     String conversationId,
     bool isPinned,
+  ) async {}
+
+  @override
+  Future<void> setConversationArchived(
+    String conversationId,
+    bool isArchived,
   ) async {}
 
   @override

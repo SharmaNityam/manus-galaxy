@@ -102,6 +102,63 @@ void main() {
     expect(historyBox.get('chat-conflict')?['title'], 'Remote title');
     expect(await remote.apply(operation), isFalse);
   });
+
+  test('applies archive and unarchive operations idempotently', () async {
+    final archived = _operation(
+      'archive-1',
+      'chat-archive',
+      ChatOperationType.archive,
+      DateTime.utc(2026, 10, 13, 12),
+      {'isArchived': true},
+    );
+    expect(await remote.apply(archived), isTrue);
+    expect(historyBox.get('chat-archive')?['isArchived'], isTrue);
+    expect(await remote.apply(archived), isFalse);
+
+    final unarchived = _operation(
+      'archive-2',
+      'chat-archive',
+      ChatOperationType.archive,
+      DateTime.utc(2026, 10, 13, 12, 1),
+      {'isArchived': false},
+    );
+    expect(await remote.apply(unarchived), isTrue);
+    expect(historyBox.get('chat-archive')?['isArchived'], isFalse);
+  });
+
+  test(
+    'queued operation survives restart and mock deduplicates redelivery',
+    () async {
+      var durableOutbox = await Hive.openBox<Map>('restart-outbox');
+      final durableSource = HiveOutboxDataSource(durableOutbox);
+      final operation = _operation(
+        'restart-send',
+        'chat-restart',
+        ChatOperationType.send,
+        DateTime.utc(2026, 10, 14, 12),
+        {'prompt': 'resume after restart'},
+      );
+      await durableSource.enqueue(operation);
+
+      await durableOutbox.close();
+      durableOutbox = await Hive.openBox<Map>('restart-outbox');
+      final recovered = HiveOutboxDataSource(durableOutbox);
+      final pending = await recovered.pending();
+      expect(pending.single.id, operation.id);
+
+      expect(await remote.apply(pending.single), isTrue);
+      await durableOutbox.close();
+      durableOutbox = await Hive.openBox<Map>('restart-outbox');
+      final afterAmbiguousAck = HiveOutboxDataSource(durableOutbox);
+      final redelivered = (await afterAmbiguousAck.pending()).single;
+      expect(await remote.apply(redelivered), isFalse);
+      await afterAmbiguousAck.remove(redelivered.id);
+      expect(await afterAmbiguousAck.count(), 0);
+      expect(historyBox.get('chat-restart')?['messages'], [
+        'resume after restart',
+      ]);
+    },
+  );
 }
 
 PendingOperation _operation(

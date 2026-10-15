@@ -1,8 +1,14 @@
+import '../../domain/entities/chat_attachment.dart';
+import '../../domain/entities/chat_message.dart';
 import 'chat_remote_data_source.dart';
 
 class MockChatRemoteDataSource implements ChatRemoteDataSource {
   @override
-  Stream<String> streamReply(String prompt) async* {
+  Stream<String> streamReply(
+    String prompt, {
+    List<ChatAttachment> attachments = const [],
+    List<ChatMessage> history = const [],
+  }) async* {
     final response = '''I can help with that. You asked: **$prompt**
 
 Here is a quick example:

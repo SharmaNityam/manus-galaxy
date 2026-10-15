@@ -1,3 +1,5 @@
+import '../entities/chat_attachment.dart';
+import '../entities/chat_message.dart';
 import '../repositories/chat_repository.dart';
 
 class StreamChatReply {
@@ -5,5 +7,13 @@ class StreamChatReply {
 
   final ChatRepository _repository;
 
-  Stream<String> call(String prompt) => _repository.streamReply(prompt);
+  Stream<String> call(
+    String prompt, {
+    List<ChatAttachment> attachments = const [],
+    List<ChatMessage> history = const [],
+  }) => _repository.streamReply(
+    prompt,
+    attachments: attachments,
+    history: history,
+  );
 }

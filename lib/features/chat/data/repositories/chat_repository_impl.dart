@@ -1,3 +1,4 @@
+import '../../domain/entities/chat_attachment.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/conversation_summary.dart';
 import '../../domain/entities/pending_operation.dart';
@@ -59,6 +60,17 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
+  Future<void> setConversationArchived(String conversationId, bool isArchived) {
+    return _mutateAndQueue(
+      ChatOperationType.archive,
+      conversationId,
+      {'isArchived': isArchived},
+      () =>
+          _localDataSource.setConversationArchived(conversationId, isArchived),
+    );
+  }
+
+  @override
   Future<void> deleteConversation(String conversationId) {
     return _mutateAndQueue(
       ChatOperationType.delete,
@@ -108,7 +120,15 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Stream<String> streamReply(String prompt) {
-    return _remoteDataSource.streamReply(prompt);
+  Stream<String> streamReply(
+    String prompt, {
+    List<ChatAttachment> attachments = const [],
+    List<ChatMessage> history = const [],
+  }) {
+    return _remoteDataSource.streamReply(
+      prompt,
+      attachments: attachments,
+      history: history,
+    );
   }
 }

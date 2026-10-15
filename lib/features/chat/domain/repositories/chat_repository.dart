@@ -1,3 +1,4 @@
+import '../entities/chat_attachment.dart';
 import '../entities/chat_message.dart';
 import '../entities/conversation_summary.dart';
 import '../entities/pending_operation.dart';
@@ -13,6 +14,8 @@ abstract interface class ChatRepository {
 
   Future<void> setConversationPinned(String conversationId, bool isPinned);
 
+  Future<void> setConversationArchived(String conversationId, bool isArchived);
+
   Future<void> deleteConversation(String conversationId);
 
   Future<void> enqueueOperation(PendingOperation operation);
@@ -23,5 +26,9 @@ abstract interface class ChatRepository {
 
   Future<bool> hasPendingOperation(String id);
 
-  Stream<String> streamReply(String prompt);
+  Stream<String> streamReply(
+    String prompt, {
+    List<ChatAttachment> attachments = const [],
+    List<ChatMessage> history = const [],
+  });
 }

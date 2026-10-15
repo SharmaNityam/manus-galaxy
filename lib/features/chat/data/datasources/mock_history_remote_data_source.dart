@@ -33,6 +33,9 @@ class MockHistoryRemoteDataSource {
       case ChatOperationType.pin:
         record['isPinned'] = operation.payload['isPinned'];
         record['deleted'] = false;
+      case ChatOperationType.archive:
+        record['isArchived'] = operation.payload['isArchived'];
+        record['deleted'] = false;
       case ChatOperationType.delete:
         record['deleted'] = true;
       case ChatOperationType.send:

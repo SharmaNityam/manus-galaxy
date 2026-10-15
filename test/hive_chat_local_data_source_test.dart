@@ -70,4 +70,27 @@ void main() {
 
     expect(await source.loadMessages('conversation-1'), isEmpty);
   });
+
+  test('archive state persists with the conversation summary', () async {
+    await source.saveMessages('conversation-archive', [
+      ChatMessage(
+        id: 'message-archive',
+        role: ChatRole.user,
+        content: 'keep this chat',
+        createdAt: DateTime.utc(2026, 10, 13),
+        status: MessageStatus.complete,
+      ),
+    ]);
+
+    await source.setConversationArchived('conversation-archive', true);
+
+    final summary = (await source.loadConversations()).single;
+    expect(summary.isArchived, isTrue);
+
+    await source.saveMessages(
+      'conversation-archive',
+      await source.loadMessages('conversation-archive'),
+    );
+    expect((await source.loadConversations()).single.isArchived, isTrue);
+  });
 }

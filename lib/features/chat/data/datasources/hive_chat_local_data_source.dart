@@ -23,6 +23,7 @@ class HiveChatLocalDataSource {
                 DateTime.tryParse(record['updatedAt'] as String? ?? '') ??
                 DateTime.fromMillisecondsSinceEpoch(0),
             isPinned: record['isPinned'] as bool? ?? false,
+            isArchived: record['isArchived'] as bool? ?? false,
           );
         })
         .whereType<ConversationSummary>()
@@ -69,6 +70,7 @@ class HiveChatLocalDataSource {
       'id': conversationId,
       'title': previous?['title'] ?? _titleFor(messages),
       'isPinned': previous?['isPinned'] as bool? ?? false,
+      'isArchived': previous?['isArchived'] as bool? ?? false,
       'updatedAt': DateTime.now().toIso8601String(),
       'messages': messages.map((message) => message.toMap()).toList(),
     });
@@ -88,6 +90,15 @@ class HiveChatLocalDataSource {
     final record = _box.get(conversationId);
     if (record == null) return;
     await _box.put(conversationId, {...record, 'isPinned': isPinned});
+  }
+
+  Future<void> setConversationArchived(
+    String conversationId,
+    bool isArchived,
+  ) async {
+    final record = _box.get(conversationId);
+    if (record == null) return;
+    await _box.put(conversationId, {...record, 'isArchived': isArchived});
   }
 
   Future<void> deleteConversation(String conversationId) {

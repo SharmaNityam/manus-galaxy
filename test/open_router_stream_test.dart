@@ -20,7 +20,7 @@ data: [DONE]
     expect(await source.streamReply('hi').toList(), ['Hello ', 'world']);
     expect(adapter.options?.headers['Authorization'], 'Bearer test-key');
     expect(adapter.options?.uri.path, '/api/v1/chat/completions');
-    expect(adapter.requestData?['model'], 'openrouter/free');
+    expect(adapter.requestData?['model'], 'google/gemma-4-31b-it:free');
     expect(adapter.requestData?['stream'], true);
     expect(adapter.requestData?['max_tokens'], 512);
     expect(adapter.requestData?['reasoning'], {'enabled': false});
@@ -46,7 +46,9 @@ class _SseAdapter implements HttpClientAdapter {
     return ResponseBody.fromString(
       body,
       200,
-      headers: {'content-type': ['text/event-stream']},
+      headers: {
+        'content-type': ['text/event-stream'],
+      },
     );
   }
 

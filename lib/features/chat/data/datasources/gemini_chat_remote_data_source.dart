@@ -1,3 +1,7 @@
+import 'remote_chat_failure.dart';
+import 'remote_chat_content.dart';
+import '../../domain/entities/chat_attachment.dart';
+import '../../domain/entities/chat_message.dart';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -17,7 +21,11 @@ class GeminiChatRemoteDataSource implements ChatRemoteDataSource {
   final String model;
 
   @override
-  Stream<String> streamReply(String prompt) async* {
+  Stream<String> streamReply(
+    String prompt, {
+    List<ChatAttachment> attachments = const [],
+    List<ChatMessage> history = const [],
+  }) async* {
     final cancelToken = CancelToken();
     var receivedText = false;
     try {
@@ -25,12 +33,12 @@ class GeminiChatRemoteDataSource implements ChatRemoteDataSource {
         'https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse',
         data: {
           'contents': [
-            {
-              'role': 'user',
-              'parts': [
-                {'text': prompt},
-              ],
-            },
+            for (final message in history)
+              {
+                'role': message.role == ChatRole.assistant ? 'model' : 'user',
+                'parts': geminiContent(message.content, message.attachments),
+              },
+            {'role': 'user', 'parts': geminiContent(prompt, attachments)},
           ],
         },
         options: Options(
@@ -72,7 +80,7 @@ class GeminiChatRemoteDataSource implements ChatRemoteDataSource {
         throw const FormatException('The model returned no text.');
       }
     } on DioException catch (error) {
-      if (!CancelToken.isCancel(error)) rethrow;
+      if (!CancelToken.isCancel(error)) throw describeRemoteFailure(error);
     } finally {
       if (!cancelToken.isCancelled) cancelToken.cancel('Stream closed.');
     }

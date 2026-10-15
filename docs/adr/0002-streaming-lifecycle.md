@@ -14,13 +14,14 @@ partial response. A response that was streaming during process death reopens as
 stopped and can be retried explicitly.
 
 Render assistant output as GitHub-flavored Markdown. Fenced code blocks use a
-separate horizontal scroller and copy action. Gemini SSE cancellation is tied
-to Dio's request cancellation token. Without `GEMINI_API_KEY`, a deterministic
-mock stream exercises Markdown, stop, and retry behavior.
+separate horizontal scroller and copy action. Gemini and OpenRouter SSE
+cancellation is tied to Dio's request cancellation token. A deterministic mock
+stream can be selected explicitly for UI development to exercise Markdown,
+stop, and retry behavior.
 
 ## Consequences
 
-The fake stream and SSE adapter can exercise ordering and cancellation without
-credentials. A real Gemini call is at-least-once from the client's perspective:
+The fake stream and SSE adapters can exercise ordering and cancellation without
+credentials. A real model call is at-least-once from the client's perspective:
 if the app loses the response after the server accepts a prompt, the client
 cannot prove whether generation completed.

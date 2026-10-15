@@ -1,6 +1,6 @@
 import 'dart:math';
 
-enum ChatOperationType { rename, pin, delete, send }
+enum ChatOperationType { rename, pin, archive, delete, send }
 
 class PendingOperation {
   const PendingOperation({

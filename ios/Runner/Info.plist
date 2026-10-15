@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Manus Chat</string>
+	<string>Manus Galaxy</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>manus_trial_app</string>
+	<string>Manus Galaxy</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -66,5 +66,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos to attach to your conversation.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose pictures to attach to your conversation.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record your voice to compose a message.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Turn your voice into an editable chat message.</string>
 </dict>
 </plist>

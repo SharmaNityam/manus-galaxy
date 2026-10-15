@@ -18,6 +18,10 @@ class ManageConversationHistory {
     return _repository.setConversationPinned(id, isPinned);
   }
 
+  Future<void> setArchived(String id, bool isArchived) {
+    return _repository.setConversationArchived(id, isArchived);
+  }
+
   Future<void> delete(String id) {
     return _repository.deleteConversation(id);
   }

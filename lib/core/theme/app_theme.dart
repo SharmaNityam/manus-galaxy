@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 abstract final class AppTheme {
-  static const background = Color(0xFFF7F7F5);
-  static const chrome = Color(0xFFF7F7F5);
+  static const background = Color(0xFFEAEAEB);
+  static const chrome = Color(0xFFEAEAEB);
   static const surface = Color(0xFFFFFFFF);
   static const userMessage = Color(0xFFECECE9);
   static const accent = Color(0xFF171717);
@@ -11,11 +12,17 @@ abstract final class AppTheme {
 
   static final light = ThemeData(
     brightness: Brightness.light,
+    fontFamily: defaultTargetPlatform == TargetPlatform.iOS
+        ? '.SF Pro Text'
+        : 'Inter',
     scaffoldBackgroundColor: background,
     visualDensity: VisualDensity.standard,
     colorScheme: const ColorScheme.light(
       surface: surface,
       primary: accent,
+      secondary: accent,
+      secondaryContainer: Color(0xFFECECE9),
+      onSecondaryContainer: primaryText,
       onPrimary: Colors.white,
       onSurface: primaryText,
     ),
